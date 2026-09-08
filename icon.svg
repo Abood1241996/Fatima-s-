@@ -1,1 +1,62 @@
 
+// sw.js - Service Worker Modifed for Next.js App Router
+const CACHE_NAME = 'fatima-f1';
+const STATIC_ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
+// نضيف مسارات الـ API لتجنب تخزينها بشكل خاطئ إذا لزم الأمر
+const API_ROUTES = ['/api/chat', '/api/image'];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys
+          .filter((key) => key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      );
+    })
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+
+  // 1. تجاهل طلبات الـ API لأنها ديناميكية وتحتاج استجابة حية
+  if (url.pathname.startsWith('/api/')) {
+    return; 
+  }
+
+  // 2. السماح بطلبات الـ External APIs (OpenRouter/Pixazo) دون تدخل الـ Cache
+  if (
+    url.hostname.includes('openrouter.ai') ||
+    url.hostname.includes('pollinations.ai') ||
+    url.hostname.includes('core.windows.net') // Pixazo endpoint
+  ) {
+    return;
+  }
+
+  // 3. بقية الطلبات: محاولة جلبها من الـ Cache أولاً
+  if (e.request.method !== 'GET') return;
+
+  e.respondWith(
+    caches.match(e.request).then((cachedResponse) => {
+      return cachedResponse || fetch(e.request);
+    })
+  );
+});
+
+// التعامل مع تحديث الـ SW الجديد
+self.addEventListener('message', (event) => {
+  if (event.data === 'skipWaiting') {
+    self.skipWaiting();
+  }
+});
